@@ -1,8 +1,6 @@
 package org.moa.ledger.service;
 
 import org.moa.ledger.mapper.LedgerMapper;
-import org.moa.ledger.mapper.ElectronicsMapper;
-import org.moa.ledger.model.Electronics;
 import org.moa.ledger.model.Ledger;
 import org.springframework.stereotype.Service;
 
