@@ -35,6 +35,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     const result = await response.text();
     alert(result);
-    window.location.href = "login.html";
+    window.location.href = "../user/login.html";
   });
 });
