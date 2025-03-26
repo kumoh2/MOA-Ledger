@@ -1,69 +1,60 @@
-package org.moa.ledger.service;
+package com.example.moa.service;
 
-import jakarta.servlet.http.HttpSession;
-import org.moa.ledger.mapper.UserMapper;
-import org.moa.ledger.mapper.UserLedgerMapper;
-import org.moa.ledger.model.User;
-import org.moa.ledger.model.UserLedger;
+import com.example.moa.entity.User;
+import com.example.moa.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
+@RequiredArgsConstructor
 public class AuthService {
-    private final UserMapper userMapper;
-    private final UserLedgerMapper userLedgerMapper;
-    private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+    private final UserRepository userRepository;
+    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
-    public AuthService(UserMapper userMapper, UserLedgerMapper userLedgerMapper) {
-        this.userMapper = userMapper;
-        this.userLedgerMapper = userLedgerMapper;
-    }
-
-    public boolean login(String userId, String password, HttpSession session) {
-        User user = userMapper.findByUserId(userId);
-        if (user != null && encoder.matches(password, user.getPassword())) {
-            session.setAttribute("user", user.getUserId());
-            return true;
+    public User registerUser(String userId, String rawPassword, String email) {
+        if (userRepository.findById(userId).isPresent()) {
+            throw new RuntimeException("이미 존재하는 사용자입니다.");
         }
-        return false;
+        User newUser = new User();
+        newUser.setUserId(userId);
+        newUser.setPassword(passwordEncoder.encode(rawPassword));
+        newUser.setEmail(email);
+        newUser.setNickname(generateRandomNickname()); // 닉네임 생성 로직
+        return userRepository.save(newUser);
     }
 
-    public String register(User user) {
-        if (userMapper.findByUserId(user.getUserId()) != null) {
-            return "이미 존재하는 아이디입니다.";
+    public User login(String userId, String rawPassword) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("사용자를 찾을 수 없습니다.");
         }
-        // 비밀번호 암호화
-        user.setPassword(encoder.encode(user.getPassword()));
-        // 기본 닉네임 생성
-        user.setNickname("닉네임_" + user.getUserId());
-        int result = userMapper.insertUser(user);
-        if (result > 0) {
-            // 회원가입 후, userledger에 기본 메인 가계부 지정 (여기서는 group_id와 동일하게 설정)
-            UserLedger ul = new UserLedger();
-            ul.setUserId(user.getUserId());
-            ul.setMainLedgerGroupId(user.getUserId());
-            userLedgerMapper.insertUserLedger(ul);
-            return "회원가입 성공! 로그인 해주세요.";
+        if (!passwordEncoder.matches(rawPassword, user.getPassword())) {
+            throw new RuntimeException("비밀번호가 일치하지 않습니다.");
         }
-        return "회원가입 실패";
+        return user;
     }
 
-    public boolean updateProfile(User user) {
-        int result = userMapper.updateUser(user);
-        return result > 0;
+    public User updateUser(String userId, String nickname, String email, String rawPassword) {
+        User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("사용자가 존재하지 않습니다."));
+        user.setNickname(nickname);
+        user.setEmail(email);
+        if (rawPassword != null && !rawPassword.trim().isEmpty()) {
+            user.setPassword(passwordEncoder.encode(rawPassword));
+        }
+        return userRepository.save(user);
     }
 
-    public boolean withdraw(String userId) {
-        int result = userMapper.deleteUser(userId);
-        return result > 0;
+    public void deleteUser(String userId) {
+        userRepository.deleteById(userId);
     }
 
-    public String getLoggedInUser(HttpSession session) {
-        Object userId = session.getAttribute("user");
-        return userId != null ? userId.toString() : null;
+    public User getUser(String userId) {
+        return userRepository.findById(userId).orElse(null);
     }
 
-    public User getUserById(String userId) {
-        return userMapper.findByUserId(userId);
+    private String generateRandomNickname() {
+        // 필요한 닉네임 생성 로직
+        return "새로운닉네임" + (int)(Math.random()*10000);
     }
 }
