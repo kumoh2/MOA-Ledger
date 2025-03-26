@@ -1,83 +1,96 @@
-package org.moa.ledger.controller;
+package com.example.moa.controller;
 
+import com.example.moa.entity.User;
+import com.example.moa.service.AuthService;
 import jakarta.servlet.http.HttpSession;
-import org.moa.ledger.model.User;
-import org.moa.ledger.service.AuthService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
-import java.util.Map;
-import java.util.HashMap;
 
 @RestController
 @RequestMapping("/auth")
+@RequiredArgsConstructor
 public class AuthController {
     private final AuthService authService;
 
-    public AuthController(AuthService authService) {
-        this.authService = authService;
-    }
-
-    @PostMapping("/login")
-    public String login(@RequestParam String userId, @RequestParam String password, HttpSession session) {
-        boolean success = authService.login(userId, password, session);
-        return success ? "Login successful" : "Invalid username or password";
-    }
-
+    // 회원가입
     @PostMapping("/register")
-    public String register(@RequestBody User user) {
-        return authService.register(user);
+    public String register(@RequestBody RegisterRequest req) {
+        try {
+            authService.registerUser(req.getUserId(), req.getPassword(), req.getEmail());
+            return "회원가입 성공!";
+        } catch (Exception e) {
+            return "회원가입 실패: " + e.getMessage();
+        }
     }
 
+    // 로그인 (세션 유지)
+    @PostMapping("/login")
+    public String login(@RequestParam String userId,
+                        @RequestParam String password,
+                        HttpSession session) {
+        try {
+            User user = authService.login(userId, password);
+            // 세션에 userId 저장
+            session.setAttribute("userId", user.getUserId());
+            return "Login successful";
+        } catch (Exception e) {
+            return "Login failed: " + e.getMessage();
+        }
+    }
+
+    // 로그아웃
     @PostMapping("/logout")
     public String logout(HttpSession session) {
         session.invalidate();
-        return "Logged out successfully!";
+        return "Logout successful";
     }
 
-    @PostMapping("/update")
-    public String update(@RequestBody User user, HttpSession session) {
-        String currentUser = authService.getLoggedInUser(session);
-        if (currentUser == null || !currentUser.equals(user.getUserId())) {
-            return "Unauthorized";
+    // 현재 세션 확인용 API (프론트엔드에서 checkSession() 시 호출)
+    @GetMapping("/secure-data")
+    public SessionStatusResponse secureData(HttpSession session) {
+        String userId = (String) session.getAttribute("userId");
+        if (userId == null) {
+            return new SessionStatusResponse("unauthorized", null);
         }
-        boolean result = authService.updateProfile(user);
-        return result ? "Profile updated" : "Update failed";
+        return new SessionStatusResponse("ok", userId);
     }
 
+    // 사용자 정보 조회
+    @GetMapping("/userinfo")
+    public UserInfoResponse userinfo(@RequestParam String userId) {
+        User user = authService.getUser(userId);
+        if (user == null) {
+            return new UserInfoResponse("", "", "NoUser");
+        }
+        return new UserInfoResponse(user.getNickname(), user.getEmail(), "OK");
+    }
+
+    // 회원정보 업데이트
+    @PostMapping("/update")
+    public String updateUser(@RequestBody UpdateRequest req) {
+        try {
+            authService.updateUser(req.getUserId(), req.getNickname(), req.getEmail(), req.getPassword());
+            return "회원 정보가 성공적으로 변경되었습니다!";
+        } catch (Exception e) {
+            return "업데이트 실패: " + e.getMessage();
+        }
+    }
+
+    // 회원 탈퇴
     @PostMapping("/withdraw")
     public String withdraw(HttpSession session) {
-        String userId = authService.getLoggedInUser(session);
+        String userId = (String) session.getAttribute("userId");
         if (userId == null) {
-            return "Not logged in";
+            return "로그인이 필요합니다.";
         }
-        boolean result = authService.withdraw(userId);
-        if (result) {
-            session.invalidate();
-            return "Account deleted";
-        }
-        return "Deletion failed";
+        authService.deleteUser(userId);
+        session.invalidate();
+        return "회원 탈퇴가 완료되었습니다.";
     }
 
-    @GetMapping("/userinfo")
-    public User getUserInfo(@RequestParam String userId) {
-        // userId를 기반으로 사용자 전체 정보를 조회
-        User user = authService.getUserById(userId);
-        if (user != null) {
-            // 보안을 위해 비밀번호 필드는 null로 처리
-            user.setPassword(null);
-        }
-        return user;
-    }
-
-    @GetMapping("/secure-data")
-     public Map<String, String> secureData(HttpSession session) {
-         String userId = authService.getLoggedInUser(session);
-         Map<String, String> resp = new HashMap<>();
-         if (userId != null) {
-             resp.put("status", "ok");
-             resp.put("userId", userId);
-         } else {
-             resp.put("status", "unauthorized");
-         }
-         return resp;
-     }
+    // DTO 클래스들
+    static record RegisterRequest(String userId, String password, String email) {}
+    static record UpdateRequest(String userId, String nickname, String email, String password) {}
+    static record SessionStatusResponse(String status, String userId) {}
+    static record UserInfoResponse(String nickname, String email, String status) {}
 }
